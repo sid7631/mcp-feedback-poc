@@ -14,7 +14,7 @@ import {
  * HTTP server
  */
 const server = createServer((req, res) => {
-  if (req.url === "/mcp") {
+  if (req.url.startsWith("/mcp")) {
     // 🔥 NEW server per connection (critical)
     const mcp = new Server(
       {
