@@ -95,8 +95,22 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
  * SSE endpoint
  */
 app.get("/mcp", async (req, res) => {
+  // REQUIRED headers for SSE
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+
+  // flush headers immediately
+  res.flushHeaders?.();
+
   const transport = new SSEServerTransport("/mcp", res);
-  await server.connect(transport);
+
+  try {
+    await server.connect(transport);
+  } catch (err) {
+    console.error("❌ MCP connection error:", err);
+    res.end();
+  }
 });
 
 /**
