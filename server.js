@@ -1,86 +1,87 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
+import {
+  createServer
+} from "@modelcontextprotocol/sdk/server/index.js";
 
 const app = express();
 app.use(express.json());
 
 /**
- * MCP: Health check (useful for Railway)
+ * Create MCP server
  */
-app.get("/", (req, res) => {
-  res.send("MCP server is running 🚀");
-});
-
-/**
- * MCP: List tools
- */
-app.get("/tools", (req, res) => {
-  res.json({
-    tools: [
-      {
-        name: "answer_with_feedback",
-        description: "Return answer with feedback UI",
-        input_schema: {
-          type: "object",
-          properties: {
-            question: { type: "string" }
-          },
-          required: ["question"]
-        }
+const mcpServer = createServer({
+  tools: [
+    {
+      name: "answer_with_feedback",
+      description: "Return answer with feedback UI",
+      inputSchema: {
+        type: "object",
+        properties: {
+          question: { type: "string" }
+        },
+        required: ["question"]
       }
-    ]
-  });
+    }
+  ],
+
+  resources: [
+    {
+      name: "feedback-ui",
+      type: "ui",
+      uri: "https://your-domain.com/index.html" // 🔥 replace this
+    }
+  ]
 });
 
 /**
- * MCP: List resources (UI registration)
+ * Tool handler
  */
-app.get("/resources", (req, res) => {
-  res.json({
-    resources: [
-      {
-        name: "feedback-ui",
-        type: "ui",
-        uri: "https://feedback-widget-sid.netlify.app" // 🔥 replace this
-      }
-    ]
-  });
-});
-
-/**
- * MCP: Tool handler
- */
-app.post("/tools/answer_with_feedback", (req, res) => {
-  const { question } = req.body || {};
+mcpServer.setRequestHandler("answer_with_feedback", async (req) => {
+  const { question } = req;
 
   const messageId = uuidv4();
 
-  res.json({
-    answer: `Echo: ${question || "no question provided"}`,
-    messageId,
-    _meta: {
-      "openai/outputTemplate": "feedback-ui"
-    }
-  });
+  return {
+    content: [
+      {
+        type: "json",
+        data: {
+          answer: `Echo: ${question}`,
+          messageId,
+          _meta: {
+            "openai/outputTemplate": "feedback-ui"
+          }
+        }
+      }
+    ]
+  };
 });
+
+/**
+ * Mount MCP server (this handles SSE automatically)
+ */
+app.use("/mcp", mcpServer);
 
 /**
  * Feedback endpoint (for your UI button)
  */
 app.post("/feedback", (req, res) => {
-  console.log("🔥 FEEDBACK RECEIVED:", req.body);
-
-  res.json({
-    ok: true,
-    received: req.body
-  });
+  console.log("🔥 FEEDBACK:", req.body);
+  res.json({ ok: true });
 });
 
 /**
- * 🚨 IMPORTANT: Use dynamic port (Railway requirement)
+ * Health check
+ */
+app.get("/", (req, res) => {
+  res.send("MCP server running 🚀");
+});
+
+/**
+ * Railway port
  */
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
-  console.log(`MCP server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
