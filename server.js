@@ -14,7 +14,7 @@ const app = express();
 app.use(express.json());
 
 /**
- * MCP server
+ * ✅ Create MCP server
  */
 const server = new Server(
   {
@@ -30,7 +30,7 @@ const server = new Server(
 );
 
 /**
- * tools/list
+ * ✅ List tools
  */
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -51,11 +51,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 });
 
 /**
- * tools/call
+ * ✅ Call tool
  */
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name === "answer_with_feedback") {
-    const question = request.params.arguments?.question;
+server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  if (req.params.name === "answer_with_feedback") {
+    const question = req.params.arguments?.question || "";
 
     return {
       content: [
@@ -77,7 +77,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 /**
- * resources/list
+ * ✅ List resources (UI)
  */
 server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
@@ -85,52 +85,22 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
       {
         name: "feedback-ui",
         type: "ui",
-        uri: "https://feedback-widget-sid.netlify.app" // 🔥 replace
+        uri: "https://feedback-widget-sid.netlify.app" // 🔥 PUT YOUR REAL URL
       }
     ]
   };
 });
 
 /**
- * SSE endpoint
+ * ✅ Proper MCP SSE endpoint (NO manual hacks)
  */
 app.get("/mcp", async (req, res) => {
-  try {
-    // REQUIRED SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    res.flushHeaders?.();
-
-    const transport = new SSEServerTransport("/mcp", res);
-
-    // 🔥 IMPORTANT: DO NOT await directly (this can exit early)
-    server.connect(transport).catch((err) => {
-      console.error("MCP connection error:", err);
-    });
-
-    // keep connection alive manually
-    const interval = setInterval(() => {
-      try {
-        res.write(": keep-alive\n\n");
-      } catch {
-        clearInterval(interval);
-      }
-    }, 15000);
-
-    req.on("close", () => {
-      clearInterval(interval);
-    });
-
-  } catch (err) {
-    console.error("❌ MCP route error:", err);
-    res.end();
-  }
+  const transport = new SSEServerTransport("/mcp", res);
+  await server.connect(transport);
 });
 
 /**
- * Feedback endpoint
+ * ✅ Feedback endpoint (for your UI)
  */
 app.post("/feedback", (req, res) => {
   console.log("🔥 FEEDBACK:", req.body);
@@ -138,13 +108,16 @@ app.post("/feedback", (req, res) => {
 });
 
 /**
- * Health
+ * Health check
  */
 app.get("/", (req, res) => {
   res.send("MCP running 🚀");
 });
 
+/**
+ * Railway port
+ */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
