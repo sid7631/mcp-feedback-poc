@@ -1,13 +1,20 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  ListResourcesRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 
 const app = express();
 app.use(express.json());
 
 /**
- * Create MCP server
+ * MCP server
  */
 const server = new Server(
   {
@@ -16,15 +23,16 @@ const server = new Server(
   },
   {
     capabilities: {
-      tools: {}
+      tools: {},
+      resources: {}
     }
   }
 );
 
 /**
- * Register tool
+ * tools/list
  */
-server.setRequestHandler("tools/list", async () => {
+server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
@@ -43,9 +51,9 @@ server.setRequestHandler("tools/list", async () => {
 });
 
 /**
- * Handle tool call
+ * tools/call
  */
-server.setRequestHandler("tools/call", async (request) => {
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === "answer_with_feedback") {
     const question = request.params.arguments?.question;
 
@@ -69,22 +77,22 @@ server.setRequestHandler("tools/call", async (request) => {
 });
 
 /**
- * Register resources (UI)
+ * resources/list
  */
-server.setRequestHandler("resources/list", async () => {
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
   return {
     resources: [
       {
         name: "feedback-ui",
         type: "ui",
-        uri: "https://your-domain.com/index.html" // 🔥 replace
+        uri: "https://feedback-widget-sid.netlify.app" // 🔥 replace
       }
     ]
   };
 });
 
 /**
- * SSE endpoint (THIS is what ChatGPT connects to)
+ * SSE endpoint
  */
 app.get("/mcp", async (req, res) => {
   const transport = new SSEServerTransport("/mcp", res);
