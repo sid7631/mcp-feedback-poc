@@ -95,20 +95,36 @@ server.setRequestHandler(ListResourcesRequestSchema, async () => {
  * SSE endpoint
  */
 app.get("/mcp", async (req, res) => {
-  // REQUIRED headers for SSE
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  // flush headers immediately
-  res.flushHeaders?.();
-
-  const transport = new SSEServerTransport("/mcp", res);
-
   try {
-    await server.connect(transport);
+    // REQUIRED SSE headers
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    res.flushHeaders?.();
+
+    const transport = new SSEServerTransport("/mcp", res);
+
+    // 🔥 IMPORTANT: DO NOT await directly (this can exit early)
+    server.connect(transport).catch((err) => {
+      console.error("MCP connection error:", err);
+    });
+
+    // keep connection alive manually
+    const interval = setInterval(() => {
+      try {
+        res.write(": keep-alive\n\n");
+      } catch {
+        clearInterval(interval);
+      }
+    }, 15000);
+
+    req.on("close", () => {
+      clearInterval(interval);
+    });
+
   } catch (err) {
-    console.error("❌ MCP connection error:", err);
+    console.error("❌ MCP route error:", err);
     res.end();
   }
 });
