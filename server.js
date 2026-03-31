@@ -1,8 +1,7 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import {
-  createServer
-} from "@modelcontextprotocol/sdk/server/index.js";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 
 const app = express();
 app.use(express.json());
@@ -10,48 +9,33 @@ app.use(express.json());
 /**
  * Create MCP server
  */
-const mcpServer = createServer({
-  tools: [
-    {
-      name: "answer_with_feedback",
-      description: "Return answer with feedback UI",
-      inputSchema: {
-        type: "object",
-        properties: {
-          question: { type: "string" }
-        },
-        required: ["question"]
-      }
+const server = new Server(
+  {
+    name: "feedback-mcp",
+    version: "1.0.0"
+  },
+  {
+    capabilities: {
+      tools: {}
     }
-  ],
-
-  resources: [
-    {
-      name: "feedback-ui",
-      type: "ui",
-      uri: "https://your-domain.com/index.html" // 🔥 replace this
-    }
-  ]
-});
+  }
+);
 
 /**
- * Tool handler
+ * Register tool
  */
-mcpServer.setRequestHandler("answer_with_feedback", async (req) => {
-  const { question } = req;
-
-  const messageId = uuidv4();
-
+server.setRequestHandler("tools/list", async () => {
   return {
-    content: [
+    tools: [
       {
-        type: "json",
-        data: {
-          answer: `Echo: ${question}`,
-          messageId,
-          _meta: {
-            "openai/outputTemplate": "feedback-ui"
-          }
+        name: "answer_with_feedback",
+        description: "Return answer with feedback UI",
+        inputSchema: {
+          type: "object",
+          properties: {
+            question: { type: "string" }
+          },
+          required: ["question"]
         }
       }
     ]
@@ -59,12 +43,56 @@ mcpServer.setRequestHandler("answer_with_feedback", async (req) => {
 });
 
 /**
- * Mount MCP server (this handles SSE automatically)
+ * Handle tool call
  */
-app.use("/mcp", mcpServer);
+server.setRequestHandler("tools/call", async (request) => {
+  if (request.params.name === "answer_with_feedback") {
+    const question = request.params.arguments?.question;
+
+    return {
+      content: [
+        {
+          type: "json",
+          data: {
+            answer: `Echo: ${question}`,
+            messageId: uuidv4(),
+            _meta: {
+              "openai/outputTemplate": "feedback-ui"
+            }
+          }
+        }
+      ]
+    };
+  }
+
+  throw new Error("Unknown tool");
+});
 
 /**
- * Feedback endpoint (for your UI button)
+ * Register resources (UI)
+ */
+server.setRequestHandler("resources/list", async () => {
+  return {
+    resources: [
+      {
+        name: "feedback-ui",
+        type: "ui",
+        uri: "https://your-domain.com/index.html" // 🔥 replace
+      }
+    ]
+  };
+});
+
+/**
+ * SSE endpoint (THIS is what ChatGPT connects to)
+ */
+app.get("/mcp", async (req, res) => {
+  const transport = new SSEServerTransport("/mcp", res);
+  await server.connect(transport);
+});
+
+/**
+ * Feedback endpoint
  */
 app.post("/feedback", (req, res) => {
   console.log("🔥 FEEDBACK:", req.body);
@@ -72,16 +100,13 @@ app.post("/feedback", (req, res) => {
 });
 
 /**
- * Health check
+ * Health
  */
 app.get("/", (req, res) => {
-  res.send("MCP server running 🚀");
+  res.send("MCP running 🚀");
 });
 
-/**
- * Railway port
- */
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on ${PORT}`);
 });
