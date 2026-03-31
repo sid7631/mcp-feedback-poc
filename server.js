@@ -89,47 +89,44 @@ function createMCPServer() {
  * 🚀 HTTP server
  */
 const server = createServer((req, res) => {
-  if (req.url.startsWith("/mcp")) {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const sessionId = url.searchParams.get("sessionId");
+if (req.url.startsWith("/mcp")) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const sessionId = url.searchParams.get("sessionId");
 
-    let mcp;
+  let mcp;
 
-    if (sessionId && sessions.has(sessionId)) {
-      // ✅ reuse session
-      mcp = sessions.get(sessionId);
-    } else {
-      // ✅ create new session
-      mcp = createMCPServer();
-    }
-
-    const transport = new SSEServerTransport("/mcp", res);
-
-    /**
-     * 🔥 capture sessionId after handshake
-     */
-    transport.onSessionCreated = (id) => {
-      sessions.set(id, mcp);
-    };
-
-    /**
-     * 🔥 cleanup on close
-     */
-    transport.onClose = () => {
-      for (const [key, value] of sessions.entries()) {
-        if (value === mcp) {
-          sessions.delete(key);
-        }
-      }
-    };
-
-    mcp.connect(transport).catch((err) => {
-      console.error("❌ MCP error:", err);
-      res.end();
-    });
-
-    return;
+  // ✅ reuse existing session
+  if (sessionId && sessions.has(sessionId)) {
+    mcp = sessions.get(sessionId);
+  } else {
+    // ✅ create new session
+    mcp = createMCPServer();
   }
+
+  const transport = new SSEServerTransport("/mcp", res);
+
+  // 🔥 CRITICAL: register BEFORE connect
+  transport.onSessionCreated = (id) => {
+    console.log("✅ Session created:", id);
+    sessions.set(id, mcp);
+  };
+
+  transport.onClose = () => {
+    console.log("❌ Session closed");
+    for (const [key, value] of sessions.entries()) {
+      if (value === mcp) {
+        sessions.delete(key);
+      }
+    }
+  };
+
+  mcp.connect(transport).catch((err) => {
+    console.error("MCP error:", err);
+    res.end();
+  });
+
+  return;
+}
 
   // health check
   res.writeHead(200, { "Content-Type": "text/plain" });
