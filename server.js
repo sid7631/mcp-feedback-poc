@@ -11,12 +11,12 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 /**
- * 🔥 Store sessions
+ * Store sessions: sessionId -> SSEServerTransport
  */
 const sessions = new Map();
 
 /**
- * 🔧 Create MCP server instance
+ * Create MCP server instance
  */
 function createMCPServer() {
   const mcp = new Server(
@@ -55,14 +55,14 @@ function createMCPServer() {
       return {
         content: [
           {
-            type: "json",
-            data: {
+            type: "text",
+            text: JSON.stringify({
               answer: `Echo: ${req.params.arguments?.question || ""}`,
               messageId: uuidv4(),
               _meta: {
                 "openai/outputTemplate": "feedback-ui"
               }
-            }
+            })
           }
         ]
       };
@@ -76,8 +76,7 @@ function createMCPServer() {
     resources: [
       {
         name: "feedback-ui",
-        type: "ui",
-        uri: "https://feedback-widget-sid.netlify.app/" // 🔥 REPLACE THIS
+        uri: "https://feedback-widget-sid.netlify.app/"
       }
     ]
   }));
@@ -86,47 +85,42 @@ function createMCPServer() {
 }
 
 /**
- * 🚀 HTTP server
+ * HTTP server
  */
-const server = createServer((req, res) => {
-if (req.url.startsWith("/mcp")) {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const sessionId = url.searchParams.get("sessionId");
+const server = createServer(async (req, res) => {
+  if (req.url.startsWith("/mcp")) {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const sessionId = url.searchParams.get("sessionId");
 
-  let mcp;
+    // GET: establish new SSE connection
+    if (req.method === "GET") {
+      const mcp = createMCPServer();
+      const transport = new SSEServerTransport("/mcp", res);
 
-  // ✅ reuse existing session
-  if (sessionId && sessions.has(sessionId)) {
-    mcp = sessions.get(sessionId);
-  } else {
-    // ✅ create new session
-    mcp = createMCPServer();
-  }
+      transport.onclose = () => {
+        console.log("SESSION CLOSED:", transport.sessionId);
+        sessions.delete(transport.sessionId);
+      };
 
-  const transport = new SSEServerTransport("/mcp", res);
-
-  // 🔥 CRITICAL: register BEFORE connect
-  transport.onSessionCreated = (id) => {
-    console.log("✅ Session created:", id);
-    sessions.set(id, mcp);
-  };
-
-  transport.onClose = () => {
-    console.log("❌ Session closed");
-    for (const [key, value] of sessions.entries()) {
-      if (value === mcp) {
-        sessions.delete(key);
-      }
+      await mcp.connect(transport);
+      sessions.set(transport.sessionId, transport);
+      console.log("SESSION CREATED:", transport.sessionId);
+      return;
     }
-  };
 
-  mcp.connect(transport).catch((err) => {
-    console.error("MCP error:", err);
-    res.end();
-  });
+    // POST: route message to existing session
+    if (req.method === "POST") {
+      if (!sessionId || !sessions.has(sessionId)) {
+        res.writeHead(400);
+        res.end("Unknown session");
+        return;
+      }
 
-  return;
-}
+      const transport = sessions.get(sessionId);
+      await transport.handlePostMessage(req, res);
+      return;
+    }
+  }
 
   // health check
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -134,7 +128,7 @@ if (req.url.startsWith("/mcp")) {
 });
 
 /**
- * ▶️ Start server
+ * Start server
  */
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
